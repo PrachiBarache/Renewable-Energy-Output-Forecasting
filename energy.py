@@ -84,28 +84,30 @@ def download_weather_data():
         # Fallback to creating synthetic data
         return create_synthetic_weather_data()
     
-import requests
-import io
-import pandas as pd
+# import requests
+# import io
+# import pandas as pd
 
-def get_opsd_data():
-    """Download Open Power System Data."""
-    url = "https://data.open-power-system-data.org/time_series/2020-10-06/time_series_60min_singleindex.csv"
+# def get_opsd_data():
+#     """Download Open Power System Data."""
+#     url = "https://data.open-power-system-data.org/time_series/2020-10-06/time_series_60min_singleindex.csv"
     
-    response = requests.get(url)
-    if response.status_code == 200:
-        # Load directly into pandas
-        data = pd.read_csv(io.StringIO(response.text))
-        # Save to file
-        data.to_csv('power_generation_data.csv', index=False)
-        print("Power generation data downloaded successfully")
-        return data
-    else:
-        print(f"Error: {response.status_code}")
-        return None
+#     response = requests.get(url)
+#     if response.status_code == 200:
+#         # Load directly into pandas
+#         data = pd.read_csv(io.StringIO(response.text))
+#         # Save to file
+#         data.to_csv('power_generation_data.csv', index=False)
+#         print("Power generation data downloaded successfully")
+#         return data
+#     else:
+#         print(f"Error: {response.status_code}")
+#         return None
 
-# Usage
-power_data = get_opsd_data()
+# # Usage
+# power_data = get_opsd_data()
+
+data = pd.read_csv("power_generation_data.csv")
 
 def create_synthetic_weather_data():
     """
