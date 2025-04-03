@@ -1,0 +1,5 @@
+Model: linear_regression
+Target: wind_generation
+MAE: 5.80
+RMSE: 7.33
+R²: 0.8490

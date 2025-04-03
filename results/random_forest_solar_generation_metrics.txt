@@ -1,0 +1,5 @@
+Model: random_forest
+Target: solar_generation
+MAE: 2.79
+RMSE: 5.39
+R²: 0.9850

@@ -1,0 +1,5 @@
+Model: linear_regression
+Target: solar_generation
+MAE: 2.75
+RMSE: 4.07
+R²: 0.9914

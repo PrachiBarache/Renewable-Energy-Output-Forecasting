@@ -1,0 +1,5 @@
+Model: Prophet
+Target: wind_generation
+MAE: 14.05
+RMSE: 17.46
+R²: 0.1430

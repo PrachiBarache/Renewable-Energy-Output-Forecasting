@@ -1,0 +1,5 @@
+Model: random_forest
+Target: wind_generation
+MAE: 6.27
+RMSE: 7.81
+R²: 0.8285

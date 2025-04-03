@@ -1,0 +1,5 @@
+Model: gradient_boosting
+Target: wind_generation
+MAE: 6.23
+RMSE: 7.76
+R²: 0.8306

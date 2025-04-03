@@ -1,0 +1,5 @@
+Model: gradient_boosting
+Target: solar_generation
+MAE: 2.66
+RMSE: 5.00
+R²: 0.9871

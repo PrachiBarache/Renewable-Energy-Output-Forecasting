@@ -1,10 +1,3 @@
-"""
-Renewable Energy Output Forecasting Project
-===========================================
-This project develops meteo-to-power forecasting models to predict solar and wind energy
-generation based on weather data using various time series forecasting techniques.
-"""
-
 import os
 import numpy as np
 import pandas as pd
@@ -28,16 +21,14 @@ try:
     PROPHET_AVAILABLE = True
 except ImportError:
     PROPHET_AVAILABLE = False
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
 import warnings
 warnings.filterwarnings("ignore")
-
+# Add at the top of the file
+import os
+# Limit memory usage for TensorFlow (which might be loaded by Prophet)
+os.environ['TF_MEMORY_ALLOCATION'] = '2048MB'
 # Set random seed for reproducibility
 np.random.seed(42)
-torch.manual_seed(42)
 
 # Create directories for saving data and models
 os.makedirs('data/raw', exist_ok=True)
@@ -49,65 +40,6 @@ os.makedirs('visualizations', exist_ok=True)
 #############################################################
 # PART 1: DATA ACQUISITION
 #############################################################
-
-import requests
-
-def download_weather_data():
-    """
-    Download weather data from NREL's NSRDB with better error handling.
-    """
-    print("Attempting to download weather data...")
-    
-    # For this example, we'll use a sample dataset from NREL's website
-    url = "https://developer.nrel.gov/api/solar/nsrdb_psm3_download.csv?wkt=POINT(-104.5733642578125%2039.75391559870632)&names=2019&leap_day=false&interval=60&utc=false&email=info%40example.com&api_key=DEMO_KEY"
-    
-    try:
-        print(f"Sending request to: {url}")
-        response = requests.get(url)
-        print(f"Response status code: {response.status_code}")
-        print(f"Response headers: {response.headers}")
-        if response.status_code != 200:
-            print(f"Error response content: {response.text[:500]}...")  # Show first 500 chars
-        
-        if response.status_code == 200:
-            # Skip the first 2 rows which contain metadata
-            weather_data = pd.read_csv(io.StringIO(response.text), skiprows=2)
-            weather_data.to_csv('data/raw/weather_data_sample.csv', index=False)
-            print(f"Weather data saved to 'data/raw/weather_data_sample.csv'")
-            return weather_data
-        else:
-            print(f"Failed to download weather data. Status code: {response.status_code}")
-            # Fallback to creating synthetic data
-            return create_synthetic_weather_data()
-    except Exception as e:
-        print(f"Error downloading weather data: {e}")
-        # Fallback to creating synthetic data
-        return create_synthetic_weather_data()
-    
-# import requests
-# import io
-# import pandas as pd
-
-# def get_opsd_data():
-#     """Download Open Power System Data."""
-#     url = "https://data.open-power-system-data.org/time_series/2020-10-06/time_series_60min_singleindex.csv"
-    
-#     response = requests.get(url)
-#     if response.status_code == 200:
-#         # Load directly into pandas
-#         data = pd.read_csv(io.StringIO(response.text))
-#         # Save to file
-#         data.to_csv('power_generation_data.csv', index=False)
-#         print("Power generation data downloaded successfully")
-#         return data
-#     else:
-#         print(f"Error: {response.status_code}")
-#         return None
-
-# # Usage
-# power_data = get_opsd_data()
-
-data = pd.read_csv("power_generation_data.csv")
 
 def create_synthetic_weather_data():
     """
@@ -202,16 +134,68 @@ def create_synthetic_power_data():
     
     return power_data
 
-def download_power_generation_data():
-    """Download power generation data from Open Power System Data."""
-    print("Downloading power generation data...")
+def load_weather_data(file_path=None):
+    """
+    Load locally downloaded weather data or create synthetic data if not available.
+    """
+    print("Loading weather data...")
     
-    # Latest package URL (check website for updates)
-    latest_package_url = "https://data.open-power-system-data.org/time_series/2023-06-20/time_series_60min_singleindex.csv"
+    # First check if we have a synthetic dataset already
+    synthetic_path = 'data/raw/weather_data_synthetic.csv'
+    if os.path.exists(synthetic_path):
+        print(f"Loading existing synthetic weather data from: {synthetic_path}")
+        return pd.read_csv(synthetic_path)
     
-    # try:
-    #     response = requests.get(latest_package_url)
-    #     # Rest of your function remains the same
+    # If a file path is provided, try to load it
+    if file_path and os.path.exists(file_path):
+        try:
+            # Check if the file contains NREL headers (they often have metadata in first rows)
+            with open(file_path, 'r') as f:
+                first_line = f.readline().strip()
+                # If it's NREL NSRDB data with metadata headers
+                if 'PSM' in first_line or 'NSRDB' in first_line:
+                    weather_data = pd.read_csv(file_path, skiprows=2)
+                else:
+                    weather_data = pd.read_csv(file_path)
+            
+            print(f"Weather data loaded successfully with {len(weather_data)} rows and {len(weather_data.columns)} columns")
+            print(f"Columns: {weather_data.columns.tolist()}")
+            
+            return weather_data
+        except Exception as e:
+            print(f"Error loading weather data: {e}")
+    
+    # If we get here, either no file path was provided or loading failed
+    print("Creating synthetic weather data...")
+    return create_synthetic_weather_data()
+
+def load_power_data(file_path=None):
+    """
+    Load locally downloaded power generation data or create synthetic data if not available.
+    """
+    print("Loading power generation data...")
+    
+    # First check if we have a synthetic dataset already
+    synthetic_path = 'data/raw/power_generation_synthetic.csv'
+    if os.path.exists(synthetic_path):
+        print(f"Loading existing synthetic power data from: {synthetic_path}")
+        return pd.read_csv(synthetic_path)
+    
+    # If a file path is provided, try to load it
+    if file_path and os.path.exists(file_path):
+        try:
+            power_data = pd.read_csv(file_path)
+            
+            print(f"Power generation data loaded successfully with {len(power_data)} rows and {len(power_data.columns)} columns")
+            print(f"Columns: {power_data.columns.tolist()}")
+            
+            return power_data
+        except Exception as e:
+            print(f"Error loading power generation data: {e}")
+    
+    # If we get here, either no file path was provided or loading failed
+    print("Creating synthetic power generation data...")
+    return create_synthetic_power_data()
 
 #############################################################
 # PART 2: DATA PREPROCESSING
@@ -222,6 +206,9 @@ def preprocess_weather_data(weather_data):
     Preprocess the weather data.
     """
     print("Preprocessing weather data...")
+    
+    # Make a copy to avoid modifying the original
+    weather_data = weather_data.copy()
     
     # Check if we're using the NREL data or synthetic data
     if 'Year' in weather_data.columns:
@@ -247,18 +234,24 @@ def preprocess_weather_data(weather_data):
         weather_data['timestamp'] = pd.to_datetime(
             weather_data[['year', 'month', 'day', 'hour', 'minute']]
         )
-        
-    elif 'timestamp' in weather_data.columns:
-        # Ensure timestamp is in datetime format
+    
+    # If timestamp exists as a column, ensure it's in datetime format
+    if 'timestamp' in weather_data.columns:
         weather_data['timestamp'] = pd.to_datetime(weather_data['timestamp'])
-    
-    # Set timestamp as index
-    weather_data = weather_data.set_index('timestamp')
-    
+        weather_data = weather_data.set_index('timestamp')
+    else:
+        # If no timestamp column, try to create one from year, month, day, hour if those exist
+        if all(col in weather_data.columns for col in ['year', 'month', 'day', 'hour']):
+            weather_data['timestamp'] = pd.to_datetime(
+                weather_data[['year', 'month', 'day', 'hour']]
+            )
+            weather_data = weather_data.set_index('timestamp')
+            
     # Select relevant features
     relevant_features = [col for col in weather_data.columns if col in [
         'temperature', 'wind_speed', 'solar_radiation', 'cloud_cover',
-        'diffuse_radiation', 'direct_radiation', 'dew_point', 'humidity'
+        'diffuse_radiation', 'direct_radiation', 'dew_point', 'humidity',
+        'month', 'hour', 'day_of_year'
     ]]
     
     weather_processed = weather_data[relevant_features].copy()
@@ -266,12 +259,14 @@ def preprocess_weather_data(weather_data):
     # Handle missing values
     weather_processed = weather_processed.fillna(method='ffill').fillna(method='bfill')
     
-    # Add engineered features
+    # Add engineered features if they don't exist
+    if 'hour' not in weather_processed.columns:
+        weather_processed['hour'] = weather_processed.index.hour
+    if 'day_of_year' not in weather_processed.columns:
+        weather_processed['day_of_year'] = weather_processed.index.dayofyear
+    if 'month' not in weather_processed.columns:
+        weather_processed['month'] = weather_processed.index.month
     
-    # Time-based features
-    weather_processed['hour'] = weather_processed.index.hour
-    weather_processed['day_of_year'] = weather_processed.index.dayofyear
-    weather_processed['month'] = weather_processed.index.month
     weather_processed['day_of_week'] = weather_processed.index.dayofweek
     
     # Cyclical encoding of time features
@@ -293,6 +288,9 @@ def preprocess_power_data(power_data):
     Preprocess the power generation data.
     """
     print("Preprocessing power generation data...")
+    
+    # Make a copy to avoid modifying the original
+    power_data = power_data.copy()
     
     # Check if we're using the Open Power System data or synthetic data
     if 'utc_timestamp' in power_data.columns:
@@ -430,6 +428,13 @@ def prepare_train_test_data(df, target_col, forecast_horizon=24, test_size=0.2):
     # Select features (exclude the target variables)
     feature_cols = [col for col in df_filtered.columns if col not in ['solar_generation', 'wind_generation']]
     
+    # Memory safety - check if we need to reduce dataset size
+    max_samples = 10000  # Adjust this based on available memory
+    if len(df_filtered) > max_samples:
+        print(f"Dataset is large ({len(df_filtered)} samples). Reducing to {max_samples} samples.")
+        # Only sample if the dataset is larger than max_samples
+        df_filtered = df_filtered.sample(max_samples, random_state=42)
+    
     # Split data chronologically (time series split)
     split_idx = int(len(df_filtered) * (1 - test_size))
     train_data = df_filtered.iloc[:split_idx].copy()
@@ -460,7 +465,6 @@ def prepare_train_test_data(df, target_col, forecast_horizon=24, test_size=0.2):
     print(f"Scalers and feature names saved in 'models/' directory")
     
     return X_train, X_test, y_train, y_test, feature_cols, scaler_X, scaler_y
-
 #############################################################
 # PART 3: MODEL BUILDING
 #############################################################
@@ -468,6 +472,11 @@ def prepare_train_test_data(df, target_col, forecast_horizon=24, test_size=0.2):
 def build_classical_models(X_train, y_train, target_col):
     """
     Build and train classical ML models.
+    
+    Args:
+        X_train: Training features
+        y_train: Training targets
+        target_col: Target column name
     
     Returns:
         Dictionary of trained models
@@ -554,8 +563,14 @@ def build_arima_model(data, target_col, order=(2, 1, 2), seasonal_order=(1, 1, 1
 
 def build_prophet_model(data, target_col):
     """
-    Build and train Facebook Prophet model if available, 
-    otherwise use exponential smoothing as an alternative.
+    Build and train Prophet model.
+    
+    Args:
+        data: DataFrame with time series data
+        target_col: Target column name
+    
+    Returns:
+        Trained model
     """
     if PROPHET_AVAILABLE:
         print(f"Building Prophet model for {target_col}...")
@@ -649,596 +664,11 @@ def build_prophet_model(data, target_col):
                 print(f"Error fitting simple exponential smoothing model: {e}")
                 return None
 
-class TimeSeriesDataset(Dataset):
-    """
-    PyTorch Dataset for time series data.
-    """
-    def __init__(self, X, y):
-        self.X = torch.tensor(X, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.float32)
-    
-    def __len__(self):
-        return len(self.X)
-    
-    def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
-
-class LSTMModel(nn.Module):
-    """
-    LSTM model for time series forecasting.
-    """
-    def __init__(self, input_size, hidden_size=64, num_layers=2, output_size=1, dropout=0.2):
-        super(LSTMModel, self).__init__()
-        
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=dropout if num_layers > 1 else 0
-        )
-        
-        self.fc = nn.Linear(hidden_size, output_size)
-    
-    def forward(self, x):
-        # Initialize hidden state and cell state
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
-        
-        # Forward propagate LSTM
-        out, _ = self.lstm(x, (h0, c0))
-        
-        # Decode the hidden state of the last time step
-        out = self.fc(out[:, -1, :])
-        
-        return out
-
-def build_lstm_model(X_train, y_train, feature_names, target_col, batch_size=32, num_epochs=50):
-    """
-    Build and train LSTM model.
-    """
-    print(f"Building LSTM model for {target_col}...")
-    
-    # Reshape input for LSTM [batch, sequence_length, features]
-    # For simplicity, we'll treat each sample as a sequence of length 1
-    X_train_reshaped = X_train.reshape(X_train.shape[0], 1, X_train.shape[1])
-    
-    # Create dataset and dataloader
-    dataset = TimeSeriesDataset(X_train_reshaped, y_train)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    
-    # Initialize model
-    input_size = X_train.shape[1]  # Number of features
-    model = LSTMModel(input_size=input_size)
-    
-    # Loss function and optimizer
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    
-    # Training loop
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model.to(device)
-    model.train()
-    
-    losses = []
-    
-    for epoch in range(num_epochs):
-        epoch_loss = 0
-        for X_batch, y_batch in dataloader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-            
-            # Forward pass
-            outputs = model(X_batch)
-            loss = criterion(outputs, y_batch)
-            
-            # Backward pass and optimize
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            
-            epoch_loss += loss.item()
-        
-        epoch_loss /= len(dataloader)
-        losses.append(epoch_loss)
-        
-        if (epoch + 1) % 10 == 0:
-            print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}')
-    
-    # Save model
-    torch.save(model.state_dict(), f'models/lstm_{target_col}.pt')
-    
-    # Save feature names and architecture info
-    import json
-    with open(f'models/lstm_info_{target_col}.json', 'w') as f:
-        json.dump({
-            'input_size': input_size,
-            'hidden_size': model.hidden_size,
-            'num_layers': model.num_layers,
-            'features': feature_names
-        }, f)
-    
-    print(f"LSTM model saved as 'models/lstm_{target_col}.pt'")
-    
-    return model, losses
-
-#############################################################
-# PART 4: MODEL EVALUATION
-#############################################################
-
-def evaluate_model(model, X_test, y_test, model_name, target_col, scaler_y=None):
-    """
-    Evaluate a trained model on test data.
-    
-    Args:
-        model: Trained model
-        X_test: Test features
-        y_test: Test targets
-        model_name: Name of the model
-        target_col: Target column name
-        scaler_y: Scaler used to transform the target
-    
-    Returns:
-        Dictionary with evaluation metrics
-    """
-    print(f"Evaluating {model_name} for {target_col}...")
-    
-    if model_name in ['linear_regression', 'random_forest', 'gradient_boosting']:
-        # Classical ML models
-        y_pred = model.predict(X_test)
-    
-    elif model_name == 'lstm':
-        # LSTM model
-        model.eval()
-        with torch.no_grad():
-            # Reshape input for LSTM [batch, sequence_length, features]
-            X_test_reshaped = torch.tensor(X_test.reshape(X_test.shape[0], 1, X_test.shape[1]), dtype=torch.float32)
-            y_pred = model(X_test_reshaped).numpy()
-    
-    # If we have a scaler, inverse transform the predictions and actual values
-    if scaler_y is not None:
-        y_pred = scaler_y.inverse_transform(y_pred.reshape(-1, 1))
-        y_test = scaler_y.inverse_transform(y_test)
-    
-    # Calculate metrics
-    mae = mean_absolute_error(y_test, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-    r2 = r2_score(y_test, y_pred)
-    
-    metrics = {
-        'model': model_name,
-        'target': target_col,
-        'MAE': mae,
-        'RMSE': rmse,
-        'R2': r2
-    }
-    
-    print(f"  MAE: {mae:.2f}, RMSE: {rmse:.2f}, R2: {r2:.4f}")
-    
-    # Save metrics
-    import json
-    with open(f'results/{model_name}_{target_col}_metrics.json', 'w') as f:
-        json.dump(metrics, f, indent=4)
-    
-    return metrics
-
-def evaluate_time_series_models(data, target_col, test_size=0.2):
-    """
-    Evaluate time series models (ARIMA, Prophet).
-    
-    Args:
-        data: DataFrame with time series data
-        target_col: Target column name
-        test_size: Proportion of data to use for testing
-    
-    Returns:
-        Dictionary with evaluation metrics
-    """
-    print(f"Evaluating time series models for {target_col}...")
-    
-    # Split data chronologically
-    split_idx = int(len(data) * (1 - test_size))
-    train_data = data.iloc[:split_idx].copy()
-    test_data = data.iloc[split_idx:].copy()
-    
-    results = {}
-    
-    # Evaluate ARIMA
-    try:
-        print("Evaluating ARIMA model...")
-        
-        # Try to load SARIMAX model
-        try:
-            model = sm.load(f'models/sarimax_{target_col}.pkl')
-            
-            # Create exogenous variables for test period
-            exog_test = pd.get_dummies(test_data.index.hour, prefix='hour')
-            
-            # Generate predictions
-            y_pred = model.get_prediction(
-                start=test_data.index[0],
-                end=test_data.index[-1],
-                exog=exog_test
-            ).predicted_mean
-            
-        except Exception as e:
-            print(f"Error loading SARIMAX model: {e}")
-            print("Trying to load simpler ARIMA model...")
-            
-            # Try to load simpler ARIMA model
-            model = sm.load(f'models/arima_{target_col}.pkl')
-            
-            # Generate predictions
-            y_pred = model.get_prediction(
-                start=test_data.index[0],
-                end=test_data.index[-1]
-            ).predicted_mean
-        
-        # Calculate metrics
-        y_true = test_data[target_col]
-        mae = mean_absolute_error(y_true, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        r2 = r2_score(y_true, y_pred)
-        
-        metrics = {
-            'model': 'arima',
-            'target': target_col,
-            'MAE': mae,
-            'RMSE': rmse,
-            'R2': r2
-        }
-        
-        print(f"  MAE: {mae:.2f}, RMSE: {rmse:.2f}, R2: {r2:.4f}")
-        
-        # Save metrics
-        import json
-        with open(f'results/arima_{target_col}_metrics.json', 'w') as f:
-            json.dump(metrics, f, indent=4)
-        
-        results['arima'] = metrics
-        
-    except Exception as e:
-        print(f"Error evaluating ARIMA model: {e}")
-    
-    # Evaluate Prophet
-    try:
-        print("Evaluating Prophet model...")
-        
-        # Load Prophet model
-        import pickle
-        with open(f'models/prophet_{target_col}.pkl', 'rb') as f:
-            model = pickle.load(f)
-        
-        # Prepare future dataframe
-        future = pd.DataFrame({'ds': test_data.index})
-        
-        # Add weather features as regressors if they were used in training
-        weather_features = [col for col in train_data.columns if col in ['temperature', 'wind_speed', 'solar_radiation', 'cloud_cover']]
-        for feature in weather_features:
-            future[feature] = test_data[feature]
-        
-        # Generate predictions
-        forecast = model.predict(future)
-        y_pred = forecast['yhat'].values
-        
-        # Calculate metrics
-        y_true = test_data[target_col]
-        mae = mean_absolute_error(y_true, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        r2 = r2_score(y_true, y_pred)
-        
-        metrics = {
-            'model': 'prophet',
-            'target': target_col,
-            'MAE': mae,
-            'RMSE': rmse,
-            'R2': r2
-        }
-        
-        print(f"  MAE: {mae:.2f}, RMSE: {rmse:.2f}, R2: {r2:.4f}")
-        
-        # Save metrics
-        import json
-        with open(f'results/prophet_{target_col}_metrics.json', 'w') as f:
-            json.dump(metrics, f, indent=4)
-        
-        results['prophet'] = metrics
-        
-    except Exception as e:
-        print(f"Error evaluating Prophet model: {e}")
-    
-    return results
-
-def plot_predictions(model, X_test, y_test, test_dates, model_name, target_col, scaler_y=None, savefig=True):
-    """
-    Plot model predictions against actual values.
-    
-    Args:
-        model: Trained model
-        X_test: Test features
-        y_test: Test targets
-        test_dates: Test dates (for x-axis)
-        model_name: Name of the model
-        target_col: Target column name
-        scaler_y: Scaler used to transform the target
-        savefig: Whether to save the figure to file
-    """
-    print(f"Plotting predictions for {model_name} - {target_col}...")
-    
-    plt.figure(figsize=(12, 6))
-    
-    if model_name in ['linear_regression', 'random_forest', 'gradient_boosting']:
-        # Classical ML models
-        y_pred = model.predict(X_test)
-    
-    elif model_name == 'lstm':
-        # LSTM model
-        model.eval()
-        with torch.no_grad():
-            # Reshape input for LSTM [batch, sequence_length, features]
-            X_test_reshaped = torch.tensor(X_test.reshape(X_test.shape[0], 1, X_test.shape[1]), dtype=torch.float32)
-            y_pred = model(X_test_reshaped).numpy()
-    
-    # If we have a scaler, inverse transform the predictions and actual values
-    if scaler_y is not None:
-        y_pred = scaler_y.inverse_transform(y_pred.reshape(-1, 1)).flatten()
-        y_test = scaler_y.inverse_transform(y_test).flatten()
-    else:
-        y_pred = y_pred.flatten()
-        y_test = y_test.flatten()
-    
-    # Plot predictions and actual values
-    plt.plot(test_dates, y_test, label='Actual', color='blue', alpha=0.7)
-    plt.plot(test_dates, y_pred, label='Predicted', color='red', alpha=0.7)
-    
-    plt.title(f'{model_name} - {target_col} Predictions')
-    plt.xlabel('Date')
-    plt.ylabel(target_col)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    if savefig:
-        plt.savefig(f'visualizations/{model_name}_{target_col}_predictions.png', dpi=300, bbox_inches='tight')
-        print(f"Plot saved to 'visualizations/{model_name}_{target_col}_predictions.png'")
-    
-    plt.close()
-
-def plot_time_series_predictions(data, target_col, test_size=0.2, savefig=True):
-    """
-    Plot time series model predictions against actual values.
-    
-    Args:
-        data: DataFrame with time series data
-        target_col: Target column name
-        test_size: Proportion of data to use for testing
-        savefig: Whether to save the figure to file
-    """
-    print(f"Plotting time series predictions for {target_col}...")
-    
-    # Split data chronologically
-    split_idx = int(len(data) * (1 - test_size))
-    train_data = data.iloc[:split_idx].copy()
-    test_data = data.iloc[split_idx:].copy()
-    
-    # Plot for ARIMA
-    try:
-        plt.figure(figsize=(12, 6))
-        
-        # Try to load SARIMAX model
-        try:
-            model = sm.load(f'models/sarimax_{target_col}.pkl')
-            
-            # Create exogenous variables for test period
-            exog_test = pd.get_dummies(test_data.index.hour, prefix='hour')
-            
-            # Generate predictions
-            y_pred = model.get_prediction(
-                start=test_data.index[0],
-                end=test_data.index[-1],
-                exog=exog_test
-            ).predicted_mean
-            
-            model_name = 'SARIMAX'
-            
-        except Exception as e:
-            print(f"Error loading SARIMAX model: {e}")
-            print("Trying to load simpler ARIMA model...")
-            
-            # Try to load simpler ARIMA model
-            model = sm.load(f'models/arima_{target_col}.pkl')
-            
-            # Generate predictions
-            y_pred = model.get_prediction(
-                start=test_data.index[0],
-                end=test_data.index[-1]
-            ).predicted_mean
-            
-            model_name = 'ARIMA'
-        
-        # Plot predictions and actual values
-        y_true = test_data[target_col]
-        plt.plot(test_data.index, y_true, label='Actual', color='blue', alpha=0.7)
-        plt.plot(test_data.index, y_pred, label='Predicted', color='red', alpha=0.7)
-        
-        plt.title(f'{model_name} - {target_col} Predictions')
-        plt.xlabel('Date')
-        plt.ylabel(target_col)
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        
-        if savefig:
-            plt.savefig(f'visualizations/arima_{target_col}_predictions.png', dpi=300, bbox_inches='tight')
-            print(f"Plot saved to 'visualizations/arima_{target_col}_predictions.png'")
-        
-        plt.close()
-        
-    except Exception as e:
-        print(f"Error plotting ARIMA predictions: {e}")
-    
-    # Plot for Prophet
-    try:
-        plt.figure(figsize=(12, 6))
-        
-        # Load Prophet model
-        import pickle
-        with open(f'models/prophet_{target_col}.pkl', 'rb') as f:
-            model = pickle.load(f)
-        
-        # Prepare future dataframe
-        future = pd.DataFrame({'ds': test_data.index})
-        
-        # Add weather features as regressors if they were used in training
-        weather_features = [col for col in train_data.columns if col in ['temperature', 'wind_speed', 'solar_radiation', 'cloud_cover']]
-        for feature in weather_features:
-            future[feature] = test_data[feature]
-        
-        # Generate predictions
-        forecast = model.predict(future)
-        y_pred = forecast['yhat'].values
-        
-        # Plot predictions and actual values
-        y_true = test_data[target_col]
-        plt.plot(test_data.index, y_true, label='Actual', color='blue', alpha=0.7)
-        plt.plot(test_data.index, y_pred, label='Predicted', color='red', alpha=0.7)
-        
-        plt.title(f'Prophet - {target_col} Predictions')
-        plt.xlabel('Date')
-        plt.ylabel(target_col)
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        
-        if savefig:
-            plt.savefig(f'visualizations/prophet_{target_col}_predictions.png', dpi=300, bbox_inches='tight')
-            print(f"Plot saved to 'visualizations/prophet_{target_col}_predictions.png'")
-        
-        plt.close()
-        
-    except Exception as e:
-        print(f"Error plotting Prophet predictions: {e}")
-
-def plot_feature_importance(model, feature_names, model_name, target_col, savefig=True):
-    """
-    Plot feature importance for tree-based models.
-    
-    Args:
-        model: Trained model
-        feature_names: List of feature names
-        model_name: Name of the model
-        target_col: Target column name
-        savefig: Whether to save the figure to file
-    """
-    if model_name not in ['random_forest', 'gradient_boosting']:
-        print(f"Feature importance not available for {model_name}")
-        return
-    
-    print(f"Plotting feature importance for {model_name} - {target_col}...")
-    
-    # Get feature importance from model
-    importance = model.feature_importances_
-    
-    # Sort feature importance in descending order
-    indices = np.argsort(importance)[::-1]
-    
-    # Get top 15 features
-    top_n = min(15, len(feature_names))
-    top_indices = indices[:top_n]
-    top_features = [feature_names[i] for i in top_indices]
-    top_importance = importance[top_indices]
-    
-    plt.figure(figsize=(10, 8))
-    plt.barh(range(top_n), top_importance, align='center')
-    plt.yticks(range(top_n), top_features)
-    plt.title(f'Feature Importance ({model_name} - {target_col})')
-    plt.xlabel('Importance')
-    plt.tight_layout()
-    
-    if savefig:
-        plt.savefig(f'visualizations/{model_name}_{target_col}_feature_importance.png', dpi=300, bbox_inches='tight')
-        print(f"Plot saved to 'visualizations/{model_name}_{target_col}_feature_importance.png'")
-    
-    plt.close()
-
-def plot_target_distribution(data, target_col, savefig=True):
-    """
-    Plot the distribution of the target variable.
-    
-    Args:
-        data: DataFrame with the target variable
-        target_col: Target column name
-        savefig: Whether to save the figure to file
-    """
-    print(f"Plotting distribution of {target_col}...")
-    
-    plt.figure(figsize=(10, 6))
-    sns.histplot(data[target_col], kde=True)
-    plt.title(f'Distribution of {target_col}')
-    plt.xlabel(target_col)
-    plt.ylabel('Frequency')
-    plt.grid(True, alpha=0.3)
-    
-    if savefig:
-        plt.savefig(f'visualizations/{target_col}_distribution.png', dpi=300, bbox_inches='tight')
-        print(f"Plot saved to 'visualizations/{target_col}_distribution.png'")
-    
-    plt.close()
-
-def plot_correlation_heatmap(data, target_col, savefig=True):
-    """
-    Plot correlation heatmap between weather features and target variable.
-    
-    Args:
-        data: DataFrame with weather features and target variable
-        target_col: Target column name
-        savefig: Whether to save the figure to file
-    """
-    print(f"Plotting correlation heatmap for {target_col}...")
-    
-    # Select weather features and target variable
-    weather_features = [col for col in data.columns if col in [
-        'temperature', 'wind_speed', 'solar_radiation', 'cloud_cover',
-        'diffuse_radiation', 'direct_radiation', 'dew_point', 'humidity'
-    ]]
-    
-    if not weather_features:
-        print("No weather features found in the data")
-        return
-    
-    selected_cols = weather_features + [target_col]
-    
-    # Calculate correlation matrix
-    corr = data[selected_cols].corr()
-    
-    # Plot heatmap
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(corr, annot=True, cmap='coolwarm', center=0, fmt='.2f')
-    plt.title(f'Correlation between Weather Features and {target_col}')
-    plt.tight_layout()
-    
-    if savefig:
-        plt.savefig(f'visualizations/{target_col}_correlation_heatmap.png', dpi=300, bbox_inches='tight')
-        print(f"Plot saved to 'visualizations/{target_col}_correlation_heatmap.png'")
-    
-    plt.close()
-
-#############################################################
-# PART 5: FORECASTING FUNCTIONS
-#############################################################
-
+# ISSUE 1: Fix for the forecast_renewable_energy function
 def forecast_renewable_energy(weather_data, forecast_horizon=24, target_col='solar_generation',
                               model_type='gradient_boosting'):
     """
     Generate renewable energy forecasts based on weather data.
-    
-    Args:
-        weather_data: DataFrame with weather features
-        forecast_horizon: Forecast horizon in hours
-        target_col: Target to forecast ('solar_generation' or 'wind_generation')
-        model_type: Type of model to use for forecasting
-    
-    Returns:
-        DataFrame with forecasts
     """
     print(f"Generating {forecast_horizon}h {target_col} forecast using {model_type}...")
     
@@ -1272,52 +702,6 @@ def forecast_renewable_energy(weather_data, forecast_horizon=24, target_col='sol
             f'{target_col}_forecast': y_pred.flatten()
         })
         
-    elif model_type == 'lstm':
-        # Load LSTM model info
-        with open(f'models/lstm_info_{target_col}.json', 'r') as f:
-            model_info = json.load(f)
-        
-        # Initialize model with saved architecture
-        input_size = model_info['input_size']
-        hidden_size = model_info['hidden_size']
-        num_layers = model_info['num_layers']
-        
-        model = LSTMModel(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers
-        )
-        
-        # Load model weights
-        model.load_state_dict(torch.load(f'models/lstm_{target_col}.pt'))
-        model.eval()
-        
-        # Load feature names
-        feature_names = model_info['features']
-        
-        # Load scalers
-        scaler_X = joblib.load(f'models/scaler_X_{target_col}.pkl')
-        scaler_y = joblib.load(f'models/scaler_y_{target_col}.pkl')
-        
-        # Prepare input features
-        X = weather_data[feature_names].values
-        X_scaled = scaler_X.transform(X)
-        
-        # Reshape for LSTM [batch, sequence_length, features]
-        X_reshaped = torch.tensor(X_scaled.reshape(X_scaled.shape[0], 1, X_scaled.shape[1]), dtype=torch.float32)
-        
-        # Generate predictions
-        with torch.no_grad():
-            y_pred_scaled = model(X_reshaped).numpy()
-        
-        y_pred = scaler_y.inverse_transform(y_pred_scaled)
-        
-        # Create forecast DataFrame
-        forecast = pd.DataFrame({
-            'timestamp': weather_data.index,
-            f'{target_col}_forecast': y_pred.flatten()
-        })
-    
     elif model_type == 'arima':
         try:
             # Try to load SARIMAX model
@@ -1387,55 +771,10 @@ def forecast_renewable_energy(weather_data, forecast_horizon=24, target_col='sol
     
     return forecast
 
-def plot_forecast(forecast, target_col, model_type, savefig=True):
-    """
-    Plot forecast.
-    
-    Args:
-        forecast: DataFrame with forecasts
-        target_col: Target column name
-        model_type: Type of model used for forecasting
-        savefig: Whether to save the figure to file
-    """
-    print(f"Plotting {model_type} forecast for {target_col}...")
-    
-    plt.figure(figsize=(12, 6))
-    
-    # Plot forecast
-    plt.plot(forecast.index, forecast[f'{target_col}_forecast'], color='red', alpha=0.7)
-    
-    plt.title(f'{model_type} - {target_col} Forecast')
-    plt.xlabel('Timestamp')
-    plt.ylabel(target_col)
-    plt.grid(True, alpha=0.3)
-    
-    # Add confidence intervals for Prophet
-    if model_type == 'prophet' and 'yhat_lower' in forecast.columns and 'yhat_upper' in forecast.columns:
-        plt.fill_between(
-            forecast.index,
-            forecast['yhat_lower'],
-            forecast['yhat_upper'],
-            color='red',
-            alpha=0.1
-        )
-    
-    if savefig:
-        plt.savefig(f'visualizations/{model_type}_{target_col}_forecast.png', dpi=300, bbox_inches='tight')
-        print(f"Plot saved to 'visualizations/{model_type}_{target_col}_forecast.png'")
-    
-    plt.close()
-
+# ISSUE 2: Properly implementing create_ensemble_forecast
 def create_ensemble_forecast(forecasts, target_col, weights=None):
     """
     Create ensemble forecast by combining multiple model forecasts.
-    
-    Args:
-        forecasts: Dictionary of DataFrames with forecasts from different models
-        target_col: Target column name
-        weights: Dictionary of weights for each model (optional)
-    
-    Returns:
-        DataFrame with ensemble forecast
     """
     print(f"Creating ensemble forecast for {target_col}...")
     
@@ -1471,14 +810,10 @@ def create_ensemble_forecast(forecasts, target_col, weights=None):
     
     return ensemble
 
+# ISSUE 3: Properly implementing plot_ensemble_forecast
 def plot_ensemble_forecast(ensemble, target_col, savefig=True):
     """
     Plot ensemble forecast.
-    
-    Args:
-        ensemble: DataFrame with ensemble forecast
-        target_col: Target column name
-        savefig: Whether to save the figure to file
     """
     print(f"Plotting ensemble forecast for {target_col}...")
     
@@ -1506,922 +841,398 @@ def plot_ensemble_forecast(ensemble, target_col, savefig=True):
     
     plt.close()
 
-
-
-#############################################################
-# PART 4: MODEL EVALUATION
-#############################################################
-
-def evaluate_model(model, X_test, y_test, model_name, target_col, scaler_y=None):
-    """
-    Evaluate a trained model on test data.
-    
-    Args:
-        model: Trained model
-        X_test: Test features
-        y_test: Test targets
-        model_name: Name of the model
-        target_col: Target column name
-        scaler_y: Scaler used to transform the target
-    
-    Returns:
-        Dictionary with evaluation metrics
-    """
-    print(f"Evaluating {model_name} for {target_col}...")
-    
-    if model_name in ['linear_regression', 'random_forest', 'gradient_boosting']:
-        # Classical ML models
-        y_pred = model.predict(X_test)
-    
-    elif model_name == 'lstm':
-        # LSTM model
-        model.eval()
-        with torch.no_grad():
-            # Reshape input for LSTM [batch, sequence_length, features]
-            X_test_reshaped = torch.tensor(X_test.reshape(X_test.shape[0], 1, X_test.shape[1]), dtype=torch.float32)
-            y_pred = model(X_test_reshaped).numpy()
-    
-    # If we have a scaler, inverse transform the predictions and actual values
-    if scaler_y is not None:
-        y_pred = scaler_y.inverse_transform(y_pred.reshape(-1, 1))
-        y_test = scaler_y.inverse_transform(y_test)
-    
-    # Calculate metrics
-    mae = mean_absolute_error(y_test, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-    r2 = r2_score(y_test, y_pred)
-    
-    metrics = {
-        'model': model_name,
-        'target': target_col,
-        'MAE': mae,
-        'RMSE': rmse,
-        'R2': r2
-    }
-    
-    print(f"  MAE: {mae:.2f}, RMSE: {rmse:.2f}, R2: {r2:.4f}")
-    
-    # Save metrics
-    import json
-    with open(f'results/{model_name}_{target_col}_metrics.json', 'w') as f:
-        json.dump(metrics, f, indent=4)
-    
-    return metrics
-
-def evaluate_time_series_models(data, target_col, test_size=0.2):
-    """
-    Evaluate time series models (ARIMA, Prophet).
-    
-    Args:
-        data: DataFrame with time series data
-        target_col: Target column name
-        test_size: Proportion of data to use for testing
-    
-    Returns:
-        Dictionary with evaluation metrics
-    """
-    print(f"Evaluating time series models for {target_col}...")
-    
-    # Split data chronologically
-    split_idx = int(len(data) * (1 - test_size))
-    train_data = data.iloc[:split_idx].copy()
-    test_data = data.iloc[split_idx:].copy()
-    
-    results = {}
-    
-    # Evaluate ARIMA
-    try:
-        print("Evaluating ARIMA model...")
-        
-        # Try to load SARIMAX model
-        try:
-            model = sm.load(f'models/sarimax_{target_col}.pkl')
-            
-            # Create exogenous variables for test period
-            exog_test = pd.get_dummies(test_data.index.hour, prefix='hour')
-            
-            # Generate predictions
-            y_pred = model.get_prediction(
-                start=test_data.index[0],
-                end=test_data.index[-1],
-                exog=exog_test
-            ).predicted_mean
-            
-        except Exception as e:
-            print(f"Error loading SARIMAX model: {e}")
-            print("Trying to load simpler ARIMA model...")
-            
-            # Try to load simpler ARIMA model
-            model = sm.load(f'models/arima_{target_col}.pkl')
-            
-            # Generate predictions
-            y_pred = model.get_prediction(
-                start=test_data.index[0],
-                end=test_data.index[-1]
-            ).predicted_mean
-        
-        # Calculate metrics
-        y_true = test_data[target_col]
-        mae = mean_absolute_error(y_true, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        r2 = r2_score(y_true, y_pred)
-        
-        metrics = {
-            'model': 'arima',
-            'target': target_col,
-            'MAE': mae,
-            'RMSE': rmse,
-            'R2': r2
-        }
-        
-        print(f"  MAE: {mae:.2f}, RMSE: {rmse:.2f}, R2: {r2:.4f}")
-        
-        # Save metrics
-        import json
-        with open(f'results/arima_{target_col}_metrics.json', 'w') as f:
-            json.dump(metrics, f, indent=4)
-        
-        results['arima'] = metrics
-        
-    except Exception as e:
-        print(f"Error evaluating ARIMA model: {e}")
-    
-    # Evaluate Prophet or Exponential Smoothing
-    try:
-        if PROPHET_AVAILABLE:
-            print("Evaluating Prophet model...")
-            
-            # Load Prophet model
-            import pickle
-            with open(f'models/prophet_{target_col}.pkl', 'rb') as f:
-                model = pickle.load(f)
-            
-            # Prepare future dataframe
-            future = pd.DataFrame({'ds': test_data.index})
-            
-            # Add weather features as regressors if they were used in training
-            weather_features = [col for col in train_data.columns if col in ['temperature', 'wind_speed', 'solar_radiation', 'cloud_cover']]
-            for feature in weather_features:
-                future[feature] = test_data[feature]
-            
-            # Generate predictions
-            forecast = model.predict(future)
-            y_pred = forecast['yhat'].values
-            
-        else:
-            print("Evaluating Exponential Smoothing model...")
-            
-            # Try to load exponential smoothing model
-            import pickle
-            try:
-                with open(f'models/exp_smoothing_{target_col}.pkl', 'rb') as f:
-                    model = pickle.load(f)
-            except:
-                with open(f'models/simple_exp_smoothing_{target_col}.pkl', 'rb') as f:
-                    model = pickle.load(f)
-            
-            # Generate predictions
-            y_pred = model.forecast(len(test_data))
-        
-        # Calculate metrics
-        y_true = test_data[target_col]
-        mae = mean_absolute_error(y_true, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        r2 = r2_score(y_true, y_pred)
-        
-        model_name = 'prophet' if PROPHET_AVAILABLE else 'exp_smoothing'
-        
-        metrics = {
-            'model': model_name,
-            'target': target_col,
-            'MAE': mae,
-            'RMSE': rmse,
-            'R2': r2
-        }
-        
-        print(f"  MAE: {mae:.2f}, RMSE: {rmse:.2f}, R2: {r2:.4f}")
-        
-        # Save metrics
-        import json
-        with open(f'results/{model_name}_{target_col}_metrics.json', 'w') as f:
-            json.dump(metrics, f, indent=4)
-        
-        results[model_name] = metrics
-        
-    except Exception as e:
-        print(f"Error evaluating Prophet/Exponential Smoothing model: {e}")
-    
-    return results
-
-def plot_predictions(model, X_test, y_test, test_dates, model_name, target_col, scaler_y=None, savefig=True):
-    """
-    Plot model predictions against actual values.
-    
-    Args:
-        model: Trained model
-        X_test: Test features
-        y_test: Test targets
-        test_dates: Test dates (for x-axis)
-        model_name: Name of the model
-        target_col: Target column name
-        scaler_y: Scaler used to transform the target
-        savefig: Whether to save the figure to file
-    """
-    print(f"Plotting predictions for {model_name} - {target_col}...")
-    
-    plt.figure(figsize=(12, 6))
-    
-    if model_name in ['linear_regression', 'random_forest', 'gradient_boosting']:
-        # Classical ML models
-        y_pred = model.predict(X_test)
-    
-    elif model_name == 'lstm':
-        # LSTM model
-        model.eval()
-        with torch.no_grad():
-            # Reshape input for LSTM [batch, sequence_length, features]
-            X_test_reshaped = torch.tensor(X_test.reshape(X_test.shape[0], 1, X_test.shape[1]), dtype=torch.float32)
-            y_pred = model(X_test_reshaped).numpy()
-    
-    # If we have a scaler, inverse transform the predictions and actual values
-    if scaler_y is not None:
-        y_pred = scaler_y.inverse_transform(y_pred.reshape(-1, 1)).flatten()
-        y_test = scaler_y.inverse_transform(y_test).flatten()
-    else:
-        y_pred = y_pred.flatten()
-        y_test = y_test.flatten()
-    
-    # Plot predictions and actual values
-    plt.plot(test_dates, y_test, label='Actual', color='blue', alpha=0.7)
-    plt.plot(test_dates, y_pred, label='Predicted', color='red', alpha=0.7)
-    
-    plt.title(f'{model_name} - {target_col} Predictions')
-    plt.xlabel('Date')
-    plt.ylabel(target_col)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    if savefig:
-        plt.savefig(f'visualizations/{model_name}_{target_col}_predictions.png', dpi=300, bbox_inches='tight')
-        print(f"Plot saved to 'visualizations/{model_name}_{target_col}_predictions.png'")
-    
-    plt.close()
-
-def plot_time_series_predictions(data, target_col, test_size=0.2, savefig=True):
-    """
-    Plot time series model predictions against actual values.
-    
-    Args:
-        data: DataFrame with time series data
-        target_col: Target column name
-        test_size: Proportion of data to use for testing
-        savefig: Whether to save the figure to file
-    """
-    print(f"Plotting time series predictions for {target_col}...")
-    
-    # Split data chronologically
-    split_idx = int(len(data) * (1 - test_size))
-    train_data = data.iloc[:split_idx].copy()
-    test_data = data.iloc[split_idx:].copy()
-    
-    # Plot for ARIMA
-    try:
-        plt.figure(figsize=(12, 6))
-        
-        # Try to load SARIMAX model
-        try:
-            model = sm.load(f'models/sarimax_{target_col}.pkl')
-            
-            # Create exogenous variables for test period
-            exog_test = pd.get_dummies(test_data.index.hour, prefix='hour')
-            
-            # Generate predictions
-            y_pred = model.get_prediction(
-                start=test_data.index[0],
-                end=test_data.index[-1],
-                exog=exog_test
-            ).predicted_mean
-            
-            model_name = 'SARIMAX'
-            
-        except Exception as e:
-            print(f"Error loading SARIMAX model: {e}")
-            print("Trying to load simpler ARIMA model...")
-            
-            # Try to load simpler ARIMA model
-            model = sm.load(f'models/arima_{target_col}.pkl')
-            
-            # Generate predictions
-            y_pred = model.get_prediction(
-                start=test_data.index[0],
-                end=test_data.index[-1]
-            ).predicted_mean
-            
-            model_name = 'ARIMA'
-        
-        # Plot predictions and actual values
-        y_true = test_data[target_col]
-        plt.plot(test_data.index, y_true, label='Actual', color='blue', alpha=0.7)
-        plt.plot(test_data.index, y_pred, label='Predicted', color='red', alpha=0.7)
-        
-        plt.title(f'{model_name} - {target_col} Predictions')
-        plt.xlabel('Date')
-        plt.ylabel(target_col)
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        
-        if savefig:
-            plt.savefig(f'visualizations/arima_{target_col}_predictions.png', dpi=300, bbox_inches='tight')
-            print(f"Plot saved to 'visualizations/arima_{target_col}_predictions.png'")
-        
-        plt.close()
-        
-    except Exception as e:
-        print(f"Error plotting ARIMA predictions: {e}")
-    
-    # Plot for Prophet or Exponential Smoothing
-    try:
-        plt.figure(figsize=(12, 6))
-        
-        if PROPHET_AVAILABLE:
-            # Load Prophet model
-            import pickle
-            with open(f'models/prophet_{target_col}.pkl', 'rb') as f:
-                model = pickle.load(f)
-            
-            # Prepare future dataframe
-            future = pd.DataFrame({'ds': test_data.index})
-            
-            # Add weather features as regressors if they were used in training
-            weather_features = [col for col in train_data.columns if col in ['temperature', 'wind_speed', 'solar_radiation', 'cloud_cover']]
-            for feature in weather_features:
-                future[feature] = test_data[feature]
-            
-            # Generate predictions
-            forecast = model.predict(future)
-            y_pred = forecast['yhat'].values
-            
-            model_name = 'Prophet'
-            
-        else:
-            # Load exponential smoothing model
-            import pickle
-            try:
-                with open(f'models/exp_smoothing_{target_col}.pkl', 'rb') as f:
-                    model = pickle.load(f)
-            except:
-                with open(f'models/simple_exp_smoothing_{target_col}.pkl', 'rb') as f:
-                    model = pickle.load(f)
-            
-            # Generate predictions
-            y_pred = model.forecast(len(test_data))
-            
-            model_name = 'Exponential Smoothing'
-        
-        # Plot predictions and actual values
-        y_true = test_data[target_col]
-        plt.plot(test_data.index, y_true, label='Actual', color='blue', alpha=0.7)
-        plt.plot(test_data.index, y_pred, label='Predicted', color='red', alpha=0.7)
-        
-        plt.title(f'{model_name} - {target_col} Predictions')
-        plt.xlabel('Date')
-        plt.ylabel(target_col)
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        
-        model_file_name = 'prophet' if PROPHET_AVAILABLE else 'exp_smoothing'
-        
-        if savefig:
-            plt.savefig(f'visualizations/{model_file_name}_{target_col}_predictions.png', dpi=300, bbox_inches='tight')
-            print(f"Plot saved to 'visualizations/{model_file_name}_{target_col}_predictions.png'")
-        
-        plt.close()
-        
-    except Exception as e:
-        print(f"Error plotting Prophet/Exponential Smoothing predictions: {e}")
-
-def plot_feature_importance(model, feature_names, model_name, target_col, savefig=True):
-    """
-    Plot feature importance for tree-based models.
-    
-    Args:
-        model: Trained model
-        feature_names: List of feature names
-        model_name: Name of the model
-        target_col: Target column name
-        savefig: Whether to save the figure to file
-    """
-    if model_name not in ['random_forest', 'gradient_boosting']:
-        print(f"Feature importance not available for {model_name}")
-        return
-    
-    print(f"Plotting feature importance for {model_name} - {target_col}...")
-    
-    # Get feature importance from model
-    importance = model.feature_importances_
-    
-    # Sort feature importance in descending order
-    indices = np.argsort(importance)[::-1]
-    
-    # Get top 15 features
-    top_n = min(15, len(feature_names))
-    top_indices = indices[:top_n]
-    top_features = [feature_names[i] for i in top_indices]
-    top_importance = importance[top_indices]
-    
-    plt.figure(figsize=(10, 8))
-    plt.barh(range(top_n), top_importance, align='center')
-    plt.yticks(range(top_n), top_features)
-    plt.title(f'Feature Importance ({model_name} - {target_col})')
-    plt.xlabel('Importance')
-    plt.tight_layout()
-    
-    if savefig:
-        plt.savefig(f'visualizations/{model_name}_{target_col}_feature_importance.png', dpi=300, bbox_inches='tight')
-        print(f"Plot saved to 'visualizations/{model_name}_{target_col}_feature_importance.png'")
-    
-    plt.close()
-
-def plot_target_distribution(data, target_col, savefig=True):
-    """
-    Plot the distribution of the target variable.
-    
-    Args:
-        data: DataFrame with the target variable
-        target_col: Target column name
-        savefig: Whether to save the figure to file
-    """
-    print(f"Plotting distribution of {target_col}...")
-    
+def plot_target_distribution(data, target_col):
+    """Plot distribution of target variable."""
     plt.figure(figsize=(10, 6))
     sns.histplot(data[target_col], kde=True)
     plt.title(f'Distribution of {target_col}')
-    plt.xlabel(target_col)
-    plt.ylabel('Frequency')
-    plt.grid(True, alpha=0.3)
-    
-    if savefig:
-        plt.savefig(f'visualizations/{target_col}_distribution.png', dpi=300, bbox_inches='tight')
-        print(f"Plot saved to 'visualizations/{target_col}_distribution.png'")
-    
+    plt.savefig(f'visualizations/{target_col}_distribution.png', dpi=300, bbox_inches='tight')
     plt.close()
+    print(f"Plot saved to 'visualizations/{target_col}_distribution.png'")
 
-def plot_correlation_heatmap(data, target_col, savefig=True):
-    """
-    Plot correlation heatmap between weather features and target variable.
-    
-    Args:
-        data: DataFrame with weather features and target variable
-        target_col: Target column name
-        savefig: Whether to save the figure to file
-    """
-    print(f"Plotting correlation heatmap for {target_col}...")
-    
-    # Select weather features and target variable
-    weather_features = [col for col in data.columns if col in [
-        'temperature', 'wind_speed', 'solar_radiation', 'cloud_cover',
-        'diffuse_radiation', 'direct_radiation', 'dew_point', 'humidity'
-    ]]
-    
-    if not weather_features:
-        print("No weather features found in the data")
-        return
-    
-    selected_cols = weather_features + [target_col]
-    
+def plot_correlation_heatmap(data, target_col):
+    """Plot correlation heatmap for features with target."""
+    plt.figure(figsize=(12, 10))
+    # Select numeric columns only
+    numeric_cols = data.select_dtypes(include=[np.number]).columns
     # Calculate correlation matrix
-    corr = data[selected_cols].corr()
-    
+    corr = data[numeric_cols].corr()
     # Plot heatmap
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(corr, annot=True, cmap='coolwarm', center=0, fmt='.2f')
-    plt.title(f'Correlation between Weather Features and {target_col}')
-    plt.tight_layout()
-    
-    if savefig:
-        plt.savefig(f'visualizations/{target_col}_correlation_heatmap.png', dpi=300, bbox_inches='tight')
-        print(f"Plot saved to 'visualizations/{target_col}_correlation_heatmap.png'")
-    
+    sns.heatmap(corr, annot=False, cmap='coolwarm', center=0, linewidths=0.5)
+    plt.title(f'Feature Correlation Heatmap for {target_col}')
+    plt.savefig(f'visualizations/{target_col}_correlation_heatmap.png', dpi=300, bbox_inches='tight')
     plt.close()
+    print(f"Plot saved to 'visualizations/{target_col}_correlation_heatmap.png'")
 
-#############################################################
-# PART 5: FORECASTING FUNCTIONS
-#############################################################
+def evaluate_model(model, X_test, y_test, model_name, target_col, scaler_y=None):
+    """Evaluate model performance on test data."""
+    # Make predictions
+    y_pred = model.predict(X_test)
+    if len(y_pred.shape) == 1:
+        y_pred = y_pred.reshape(-1, 1)
+    
+    # Inverse transform if scaler is provided
+    if scaler_y is not None:
+        y_pred = scaler_y.inverse_transform(y_pred)
+        y_test_inv = scaler_y.inverse_transform(y_test)
+    else:
+        y_test_inv = y_test
+    
+    # Calculate metrics
+    mae = mean_absolute_error(y_test_inv, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test_inv, y_pred))
+    r2 = r2_score(y_test_inv, y_pred)
+    
+    # Print metrics
+    print(f"\n{model_name.upper()} Model Evaluation for {target_col}:")
+    print(f"MAE: {mae:.2f}")
+    print(f"RMSE: {rmse:.2f}")
+    print(f"R²: {r2:.4f}")
+    
+    # Save metrics to file
+    with open(f'results/{model_name}_{target_col}_metrics.txt', 'w') as f:
+        f.write(f"Model: {model_name}\n")
+        f.write(f"Target: {target_col}\n")
+        f.write(f"MAE: {mae:.2f}\n")
+        f.write(f"RMSE: {rmse:.2f}\n")
+        f.write(f"R²: {r2:.4f}\n")
+    
+    return {'mae': mae, 'rmse': rmse, 'r2': r2}
 
-def forecast_renewable_energy(weather_data, forecast_horizon=24, target_col='solar_generation',
-                              model_type='gradient_boosting'):
-    """
-    Generate renewable energy forecasts based on weather data.
+def plot_predictions(model, X_test, y_test, timestamps, model_name, target_col, scaler_y=None):
+    """Plot model predictions against actual values."""
+    # Make predictions
+    y_pred = model.predict(X_test)
+    if len(y_pred.shape) == 1:
+        y_pred = y_pred.reshape(-1, 1)
     
-    Args:
-        weather_data: DataFrame with weather features
-        forecast_horizon: Forecast horizon in hours
-        target_col: Target to forecast ('solar_generation' or 'wind_generation')
-        model_type: Type of model to use for forecasting
+    # Inverse transform if scaler is provided
+    if scaler_y is not None:
+        y_pred = scaler_y.inverse_transform(y_pred)
+        y_test_inv = scaler_y.inverse_transform(y_test)
+    else:
+        y_test_inv = y_test
     
-    Returns:
-        DataFrame with forecasts
-    """
-    print(f"Generating {forecast_horizon}h {target_col} forecast using {model_type}...")
+    # Plot
+    plt.figure(figsize=(12, 6))
+    plt.plot(timestamps, y_test_inv, label='Actual', color='blue', alpha=0.7)
+    plt.plot(timestamps, y_pred, label='Predicted', color='red', alpha=0.7)
+    plt.title(f'{model_name.upper()} Model - {target_col} Predictions')
+    plt.xlabel('Timestamp')
+    plt.ylabel(target_col)
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(f'visualizations/{model_name}_{target_col}_predictions.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Plot saved to 'visualizations/{model_name}_{target_col}_predictions.png'")
+
+def plot_feature_importance(model, feature_names, model_name, target_col):
+    """Plot feature importance for tree-based models."""
+    # Get feature importances
+    importances = model.feature_importances_
     
-    # Load model and necessary data
-    import joblib
-    import json
+    # Sort features by importance
+    indices = np.argsort(importances)[::-1]
     
-    if model_type in ['linear_regression', 'random_forest', 'gradient_boosting']:
-        # Load classical ML model
-        model = joblib.load(f'models/{model_type}_{target_col}.pkl')
+    # Plot
+    plt.figure(figsize=(12, 8))
+    plt.barh(range(len(indices[:15])), importances[indices[:15]], align='center')
+    plt.yticks(range(len(indices[:15])), [feature_names[i] for i in indices[:15]])
+    plt.title(f'{model_name.upper()} - Top 15 Feature Importances for {target_col}')
+    plt.xlabel('Importance')
+    plt.tight_layout()
+    plt.savefig(f'visualizations/{model_name}_{target_col}_feature_importance.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Plot saved to 'visualizations/{model_name}_{target_col}_feature_importance.png'")
+
+def evaluate_time_series_models(data, target_col):
+    """Evaluate time series models."""
+    # Split data for validation
+    train_size = int(len(data) * 0.8)
+    train_data = data.iloc[:train_size]
+    test_data = data.iloc[train_size:]
+    
+    # Evaluate ARIMA model
+    try:
+        # Load SARIMAX model
+        model = sm.load(f'models/sarimax_{target_col}.pkl')
         
-        # Load feature names
-        with open(f'models/feature_names_{target_col}.txt', 'r') as f:
-            feature_names = f.read().splitlines()
-        
-        # Load scalers
-        scaler_X = joblib.load(f'models/scaler_X_{target_col}.pkl')
-        scaler_y = joblib.load(f'models/scaler_y_{target_col}.pkl')
-        
-        # Prepare input features
-        X = weather_data[feature_names].values
-        X_scaled = scaler_X.transform(X)
+        # Create exogenous variables
+        exog = pd.get_dummies(test_data.index.hour, prefix='hour')
         
         # Generate predictions
-        y_pred_scaled = model.predict(X_scaled)
-        y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1, 1))
+        predictions = model.get_prediction(
+            start=test_data.index[0],
+            end=test_data.index[-1],
+            exog=exog
+        ).predicted_mean
         
-        # Create forecast DataFrame
-        forecast = pd.DataFrame({
-            'timestamp': weather_data.index,
-            f'{target_col}_forecast': y_pred.flatten()
-        })
+        # Calculate metrics
+        mae = mean_absolute_error(test_data[target_col], predictions)
+        rmse = np.sqrt(mean_squared_error(test_data[target_col], predictions))
+        r2 = r2_score(test_data[target_col], predictions)
         
-    elif model_type == 'lstm':
-        # Load LSTM model info
-        with open(f'models/lstm_info_{target_col}.json', 'r') as f:
-            model_info = json.load(f)
+        # Print metrics
+        print(f"\nARIMA Model Evaluation for {target_col}:")
+        print(f"MAE: {mae:.2f}")
+        print(f"RMSE: {rmse:.2f}")
+        print(f"R²: {r2:.4f}")
         
-        # Initialize model with saved architecture
-        input_size = model_info['input_size']
-        hidden_size = model_info['hidden_size']
-        num_layers = model_info['num_layers']
-        
-        model = LSTMModel(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers
-        )
-        
-        # Load model weights
-        model.load_state_dict(torch.load(f'models/lstm_{target_col}.pt'))
-        model.eval()
-        
-        # Load feature names
-        feature_names = model_info['features']
-        
-        # Load scalers
-        scaler_X = joblib.load(f'models/scaler_X_{target_col}.pkl')
-        scaler_y = joblib.load(f'models/scaler_y_{target_col}.pkl')
-        
-        # Prepare input features
-        X = weather_data[feature_names].values
-        X_scaled = scaler_X.transform(X)
-        
-        # Reshape for LSTM [batch, sequence_length, features]
-        X_reshaped = torch.tensor(X_scaled.reshape(X_scaled.shape[0], 1, X_scaled.shape[1]), dtype=torch.float32)
-        
-        # Generate predictions
-        with torch.no_grad():
-            y_pred_scaled = model(X_reshaped).numpy()
-        
-        y_pred = scaler_y.inverse_transform(y_pred_scaled)
-        
-        # Create forecast DataFrame
-        forecast = pd.DataFrame({
-            'timestamp': weather_data.index,
-            f'{target_col}_forecast': y_pred.flatten()
-        })
+        # Save metrics to file
+        with open(f'results/arima_{target_col}_metrics.txt', 'w') as f:
+            f.write(f"Model: ARIMA\n")
+            f.write(f"Target: {target_col}\n")
+            f.write(f"MAE: {mae:.2f}\n")
+            f.write(f"RMSE: {rmse:.2f}\n")
+            f.write(f"R²: {r2:.4f}\n")
     
-    elif model_type == 'arima':
+    except Exception as e:
+        print(f"Error evaluating ARIMA model: {e}")
+    
+    # Evaluate Prophet model if available
+    if PROPHET_AVAILABLE:
         try:
-            # Try to load SARIMAX model
-            model = sm.load(f'models/sarimax_{target_col}.pkl')
+            # Load Prophet model
+            import pickle
+            with open(f'models/prophet_{target_col}.pkl', 'rb') as f:
+                model = pickle.load(f)
             
-            # Create exogenous variables for forecast period
-            exog = pd.get_dummies(weather_data.index.hour, prefix='hour')
+            # Prepare future DataFrame
+            future = pd.DataFrame({'ds': test_data.index})
+            
+            # Add weather features as regressors if they were used in training
+            weather_features = [col for col in test_data.columns if col in [
+                'temperature', 'wind_speed', 'solar_radiation', 'cloud_cover'
+            ]]
+            
+            for feature in weather_features:
+                future[feature] = test_data[feature].values
             
             # Generate predictions
-            y_pred = model.get_prediction(
-                start=weather_data.index[0],
-                end=weather_data.index[-1],
-                exog=exog
-            ).predicted_mean
+            forecast = model.predict(future)
             
+            # Calculate metrics
+            mae = mean_absolute_error(test_data[target_col], forecast['yhat'])
+            rmse = np.sqrt(mean_squared_error(test_data[target_col], forecast['yhat']))
+            r2 = r2_score(test_data[target_col], forecast['yhat'])
+            
+            # Print metrics
+            print(f"\nProphet Model Evaluation for {target_col}:")
+            print(f"MAE: {mae:.2f}")
+            print(f"RMSE: {rmse:.2f}")
+            print(f"R²: {r2:.4f}")
+            
+            # Save metrics to file
+            with open(f'results/prophet_{target_col}_metrics.txt', 'w') as f:
+                f.write(f"Model: Prophet\n")
+                f.write(f"Target: {target_col}\n")
+                f.write(f"MAE: {mae:.2f}\n")
+                f.write(f"RMSE: {rmse:.2f}\n")
+                f.write(f"R²: {r2:.4f}\n")
+        
         except Exception as e:
-            print(f"Error loading SARIMAX model: {e}")
-            print("Trying to load simpler ARIMA model...")
-            
-            # Try to load simpler ARIMA model
-            model = sm.load(f'models/arima_{target_col}.pkl')
-            
-            # Generate predictions
-            y_pred = model.get_prediction(
-                start=weather_data.index[0],
-                end=weather_data.index[-1]
-            ).predicted_mean
-        
-        # Create forecast DataFrame
-        forecast = pd.DataFrame({
-            'timestamp': weather_data.index,
-            f'{target_col}_forecast': y_pred
-        })
+            print(f"Error evaluating Prophet model: {e}")
 
-    elif model_type == 'prophet':
-        # Load Prophet model
-        import pickle
-        with open(f'models/prophet_{target_col}.pkl', 'rb') as f:
-            model = pickle.load(f)
+def plot_time_series_predictions(data, target_col):
+    """Plot time series model predictions."""
+    # Split data for validation
+    train_size = int(len(data) * 0.8)
+    train_data = data.iloc[:train_size]
+    test_data = data.iloc[train_size:]
+    
+    plt.figure(figsize=(12, 6))
+    plt.plot(test_data.index, test_data[target_col], label='Actual', color='blue', alpha=0.7)
+    
+    # Plot ARIMA predictions
+    try:
+        # Load SARIMAX model
+        model = sm.load(f'models/sarimax_{target_col}.pkl')
         
-        # Prepare future DataFrame
-        future = pd.DataFrame({'ds': weather_data.index})
-        
-        # Add weather features as regressors if they were used in training
-        weather_features = [col for col in weather_data.columns if col in [
-            'temperature', 'wind_speed', 'solar_radiation', 'cloud_cover'
-        ]]
-        
-        for feature in weather_features:
-            future[feature] = weather_data[feature].values
+        # Create exogenous variables
+        exog = pd.get_dummies(test_data.index.hour, prefix='hour')
         
         # Generate predictions
-        forecast_df = model.predict(future)
+        predictions = model.get_prediction(
+            start=test_data.index[0],
+            end=test_data.index[-1],
+            exog=exog
+        ).predicted_mean
         
-        # Create forecast DataFrame
-        forecast = pd.DataFrame({
-            'timestamp': weather_data.index,
-            f'{target_col}_forecast': forecast_df['yhat'].values
-        })
-
-    # Set timestamp as index
-    forecast = forecast.set_index('timestamp')
-
-    # Save forecast
-    forecast.to_csv(f'results/{model_type}_{target_col}_forecast.csv')
-    print(f"Forecast saved to 'results/{model_type}_{target_col}_forecast.csv'")
-    return forecast
-
-
-
-############################################################
-# PART 6: MAIN FUNCTION
-#############################################################
-
-def main():
-    """
-    Main function to run the entire pipeline.
-    """
-    print("==========================================")
-    print("Renewable Energy Output Forecasting Project")
-    print("==========================================")
+        plt.plot(test_data.index, predictions, label='ARIMA', color='red', alpha=0.7)
+    except Exception as e:
+        print(f"Error plotting ARIMA predictions: {e}")
     
-    # Step 1: Data Acquisition
-    print("\n--- Step 1: Data Acquisition ---\n")
-    
-    weather_data = download_weather_data()
-    power_data = download_power_generation_data()
-    
-    # Step 2: Data Preprocessing
-    print("\n--- Step 2: Data Preprocessing ---\n")
-    
-    weather_processed = preprocess_weather_data(weather_data)
-    power_processed = preprocess_power_data(power_data)
-    merged_data = merge_weather_and_power_data(weather_processed, power_processed)
-    feature_engineered_data = create_lagged_features(merged_data)
-    
-    # Step 3: Exploratory Data Analysis
-    print("\n--- Step 3: Exploratory Data Analysis ---\n")
-    
-    # Plot target distributions
-    plot_target_distribution(feature_engineered_data, 'solar_generation')
-    plot_target_distribution(feature_engineered_data, 'wind_generation')
-    
-    # Plot correlation heatmaps
-    plot_correlation_heatmap(feature_engineered_data, 'solar_generation')
-    plot_correlation_heatmap(feature_engineered_data, 'wind_generation')
-    
-    # Step 4: Model Building and Evaluation for Solar Generation
-    print("\n--- Step 4: Model Building and Evaluation for Solar Generation ---\n")
-    
-    # Prepare train/test data for solar generation
-    X_train_solar, X_test_solar, y_train_solar, y_test_solar, feature_names_solar, scaler_X_solar, scaler_y_solar = prepare_train_test_data(
-        feature_engineered_data, 'solar_generation'
-    )
-    
-    # Build and evaluate classical models for solar generation
-    classical_models_solar = build_classical_models(X_train_solar, y_train_solar, 'solar_generation')
-    
-    for name, model in classical_models_solar.items():
-        metrics = evaluate_model(model, X_test_solar, y_test_solar, name, 'solar_generation', scaler_y_solar)
-        plot_predictions(model, X_test_solar, y_test_solar, feature_engineered_data.index[-len(X_test_solar):], name, 'solar_generation', scaler_y_solar)
-        
-        if name in ['random_forest', 'gradient_boosting']:
-            plot_feature_importance(model, feature_names_solar, name, 'solar_generation')
-    
-    # Build and evaluate LSTM model for solar generation
-    lstm_model_solar, _ = build_lstm_model(X_train_solar, y_train_solar, feature_names_solar, 'solar_generation')
-    evaluate_model(lstm_model_solar, X_test_solar, y_test_solar, 'lstm', 'solar_generation', scaler_y_solar)
-    plot_predictions(lstm_model_solar, X_test_solar, y_test_solar, feature_engineered_data.index[-len(X_test_solar):], 'lstm', 'solar_generation', scaler_y_solar)
-    
-    # Build and evaluate time series models for solar generation
-    build_arima_model(feature_engineered_data, 'solar_generation')
-    build_prophet_model(feature_engineered_data, 'solar_generation')
-    evaluate_time_series_models(feature_engineered_data, 'solar_generation')
-    plot_time_series_predictions(feature_engineered_data, 'solar_generation')
-    
-    # Step 5: Model Building and Evaluation for Wind Generation
-    print("\n--- Step 5: Model Building and Evaluation for Wind Generation ---\n")
-    
-    # Prepare train/test data for wind generation
-    X_train_wind, X_test_wind, y_train_wind, y_test_wind, feature_names_wind, scaler_X_wind, scaler_y_wind = prepare_train_test_data(
-        feature_engineered_data, 'wind_generation'
-    )
-    
-    # Build and evaluate classical models for wind generation
-    classical_models_wind = build_classical_models(X_train_wind, y_train_wind, 'wind_generation')
-    
-    for name, model in classical_models_wind.items():
-        metrics = evaluate_model(model, X_test_wind, y_test_wind, name, 'wind_generation', scaler_y_wind)
-        plot_predictions(model, X_test_wind, y_test_wind, feature_engineered_data.index[-len(X_test_wind):], name, 'wind_generation', scaler_y_wind)
-        
-        if name in ['random_forest', 'gradient_boosting']:
-            plot_feature_importance(model, feature_names_wind, name, 'wind_generation')
-    
-    # Build and evaluate LSTM model for wind generation
-    lstm_model_wind, _ = build_lstm_model(X_train_wind, y_train_wind, feature_names_wind, 'wind_generation')
-    evaluate_model(lstm_model_wind, X_test_wind, y_test_wind, 'lstm', 'wind_generation', scaler_y_wind)
-    plot_predictions(lstm_model_wind, X_test_wind, y_test_wind, feature_engineered_data.index[-len(X_test_wind):], 'lstm', 'wind_generation', scaler_y_wind)
-    
-    # Build and evaluate time series models for wind generation
-    build_arima_model(feature_engineered_data, 'wind_generation')
-    build_prophet_model(feature_engineered_data, 'wind_generation')
-    evaluate_time_series_models(feature_engineered_data, 'wind_generation')
-    plot_time_series_predictions(feature_engineered_data, 'wind_generation')
-    
-    # Step 6: Forecasting
-    print("\n--- Step 6: Forecasting ---\n")
-    
-    # Create a future weather data frame for forecasting (for demonstration, we'll use the last 24 hours of our data)
-    future_weather = weather_processed.iloc[-24:].copy()
-    
-    # Generate forecasts for solar generation
-    forecasts_solar = {}
-    for model_type in ['linear_regression', 'random_forest', 'gradient_boosting', 'lstm', 'arima', 'prophet']:
+    # Plot Prophet predictions if available
+    if PROPHET_AVAILABLE:
         try:
-            forecast = forecast_renewable_energy(future_weather, 24, 'solar_generation', model_type)
-            forecasts_solar[model_type] = forecast
-            plot_forecast(forecast, 'solar_generation', model_type)
+            # Load Prophet model
+            import pickle
+            with open(f'models/prophet_{target_col}.pkl', 'rb') as f:
+                model = pickle.load(f)
+            
+            # Prepare future DataFrame
+            future = pd.DataFrame({'ds': test_data.index})
+            
+            # Add weather features as regressors if they were used in training
+            weather_features = [col for col in test_data.columns if col in [
+                'temperature', 'wind_speed', 'solar_radiation', 'cloud_cover'
+            ]]
+            
+            for feature in weather_features:
+                future[feature] = test_data[feature].values
+            
+            # Generate predictions
+            forecast = model.predict(future)
+            
+            plt.plot(test_data.index, forecast['yhat'], label='Prophet', color='green', alpha=0.7)
         except Exception as e:
-            print(f"Error generating forecast with {model_type} for solar_generation: {e}")
+            print(f"Error plotting Prophet predictions: {e}")
     
-    # Create ensemble forecast for solar generation
-    if forecasts_solar:
-        ensemble_solar = create_ensemble_forecast(forecasts_solar, 'solar_generation')
-        plot_ensemble_forecast(ensemble_solar, 'solar_generation')
-    
-    # Generate forecasts for wind generation
-    forecasts_wind = {}
-    for model_type in ['linear_regression', 'random_forest', 'gradient_boosting', 'lstm', 'arima', 'prophet']:
-        try:
-            forecast = forecast_renewable_energy(future_weather, 24, 'wind_generation', model_type)
-            forecasts_wind[model_type] = forecast
-            plot_forecast(forecast, 'wind_generation', model_type)
-        except Exception as e:
-            print(f"Error generating forecast with {model_type} for wind_generation: {e}")
-    
-    # Create ensemble forecast for wind generation
-    if forecasts_wind:
-        ensemble_wind = create_ensemble_forecast(forecasts_wind, 'wind_generation')
-        plot_ensemble_forecast(ensemble_wind, 'wind_generation')
-    
-    print("\n==========================================")
-    print("Project complete! Results saved in 'results/' directory.")
-    print("Visualizations saved in 'visualizations/' directory.")
-    print("==========================================")
+    plt.title(f'Time Series Models - {target_col} Predictions')
+    plt.xlabel('Timestamp')
+    plt.ylabel(target_col)
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(f'visualizations/time_series_{target_col}_predictions.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Plot saved to 'visualizations/time_series_{target_col}_predictions.png'")
 
+def plot_forecast(forecast, target_col, model_type):
+    """Plot forecast."""
+    plt.figure(figsize=(12, 6))
+    plt.plot(forecast.index, forecast[f'{target_col}_forecast'], label=f'{model_type} Forecast')
+    plt.title(f'{model_type.upper()} - {target_col} Forecast')
+    plt.xlabel('Timestamp')
+    plt.ylabel(target_col)
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(f'visualizations/{model_type}_{target_col}_forecast.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Plot saved to 'visualizations/{model_type}_{target_col}_forecast.png'")
+
+# ISSUE 4: Main execution block
 if __name__ == "__main__":
-    def plot_forecast(forecast, target_col, model_type, savefig=True):
-        """
-        Plot forecast.
+    # Wrap all steps in try-except blocks
+    try:
+        print("==========================================")
+        print("Renewable Energy Output Forecasting Project")
+        print("==========================================")
         
-        Args:
-            forecast: DataFrame with forecasts
-            target_col: Target column name
-            model_type: Type of model used for forecasting
-            savefig: Whether to save the figure to file
-        """
-        print(f"Plotting {model_type} forecast for {target_col}...")
+        # Step 1: Data Acquisition
+        print("\n--- Step 1: Data Acquisition ---\n")
         
-        plt.figure(figsize=(12, 6))
+        weather_data = load_weather_data()
+        power_data = load_power_data()
         
-        # Plot forecast
-        plt.plot(forecast.index, forecast[f'{target_col}_forecast'], color='red', alpha=0.7)
+        # Step 2: Data Preprocessing
+        print("\n--- Step 2: Data Preprocessing ---\n")
         
-        plt.title(f'{model_type} - {target_col} Forecast')
-        plt.xlabel('Timestamp')
-        plt.ylabel(target_col)
-        plt.grid(True, alpha=0.3)
+        weather_processed = preprocess_weather_data(weather_data)
+        power_processed = preprocess_power_data(power_data)
+        merged_data = merge_weather_and_power_data(weather_processed, power_processed)
+        feature_engineered_data = create_lagged_features(merged_data)
         
-        # Add confidence intervals for Prophet
-        if model_type == 'prophet' and 'yhat_lower' in forecast.columns and 'yhat_upper' in forecast.columns:
-            plt.fill_between(
-                forecast.index,
-                forecast['yhat_lower'],
-                forecast['yhat_upper'],
-                color='red',
-                alpha=0.1
-            )
+        # Step 3: Exploratory Data Analysis
+        print("\n--- Step 3: Exploratory Data Analysis ---\n")
         
-        if savefig:
-            plt.savefig(f'visualizations/{model_type}_{target_col}_forecast.png', dpi=300, bbox_inches='tight')
-            print(f"Plot saved to 'visualizations/{model_type}_{target_col}_forecast.png'")
-        
-        plt.close()
+        try:
+            plot_target_distribution(feature_engineered_data, 'solar_generation')
+            plot_target_distribution(feature_engineered_data, 'wind_generation')
+            plot_correlation_heatmap(feature_engineered_data, 'solar_generation')
+            plot_correlation_heatmap(feature_engineered_data, 'wind_generation')
+        except Exception as e:
+            print(f"Error in EDA: {e}")
 
-def create_ensemble_forecast(forecasts, target_col, weights=None):
-    """
-    Create ensemble forecast by combining multiple model forecasts.
-    
-    Args:
-        forecasts: Dictionary of DataFrames with forecasts from different models
-        target_col: Target column name
-        weights: Dictionary of weights for each model (optional)
-    
-    Returns:
-        DataFrame with ensemble forecast
-    """
-    print(f"Creating ensemble forecast for {target_col}...")
-    
-    # Get list of models
-    models = list(forecasts.keys())
-    
-    # Create DataFrame for ensemble forecast
-    ensemble = pd.DataFrame(index=forecasts[models[0]].index)
-    
-    # Add individual model forecasts
-    for model in models:
-        ensemble[f'{model}_forecast'] = forecasts[model][f'{target_col}_forecast']
-    
-    # Calculate ensemble forecast
-    if weights is None:
-        # Simple average
-        ensemble[f'{target_col}_ensemble'] = ensemble.mean(axis=1)
-    else:
-        # Weighted average
-        weighted_sum = 0
-        total_weight = 0
+        # Step 4: Model Building and Evaluation for Solar Generation
+        print("\n--- Step 4: Model Building and Evaluation for Solar Generation ---\n")
         
-        for model in models:
-            if model in weights:
-                weighted_sum += ensemble[f'{model}_forecast'] * weights[model]
-                total_weight += weights[model]
+        # Prepare train/test data for solar generation
+        X_train_solar, X_test_solar, y_train_solar, y_test_solar, feature_names_solar, scaler_X_solar, scaler_y_solar = prepare_train_test_data(
+            feature_engineered_data, 'solar_generation'
+        )
         
-        ensemble[f'{target_col}_ensemble'] = weighted_sum / total_weight
+        # Build and evaluate classical models for solar generation
+        classical_models_solar = build_classical_models(X_train_solar, y_train_solar, 'solar_generation')
+        
+        for name, model in classical_models_solar.items():
+            metrics = evaluate_model(model, X_test_solar, y_test_solar, name, 'solar_generation', scaler_y_solar)
+            plot_predictions(model, X_test_solar, y_test_solar, feature_engineered_data.index[-len(X_test_solar):], name, 'solar_generation', scaler_y_solar)
+            
+            if name in ['random_forest', 'gradient_boosting']:
+                plot_feature_importance(model, feature_names_solar, name, 'solar_generation')
+        
+        # Build and evaluate time series models for solar generation
+        build_arima_model(feature_engineered_data, 'solar_generation')
+        build_prophet_model(feature_engineered_data, 'solar_generation')
+        evaluate_time_series_models(feature_engineered_data, 'solar_generation')
+        plot_time_series_predictions(feature_engineered_data, 'solar_generation')
+        
+        # Step 5: Model Building and Evaluation for Wind Generation
+        print("\n--- Step 5: Model Building and Evaluation for Wind Generation ---\n")
+        
+        # Prepare train/test data for wind generation
+        X_train_wind, X_test_wind, y_train_wind, y_test_wind, feature_names_wind, scaler_X_wind, scaler_y_wind = prepare_train_test_data(
+            feature_engineered_data, 'wind_generation'
+        )
+        
+        # Build and evaluate classical models for wind generation
+        classical_models_wind = build_classical_models(X_train_wind, y_train_wind, 'wind_generation')
+        
+        for name, model in classical_models_wind.items():
+            metrics = evaluate_model(model, X_test_wind, y_test_wind, name, 'wind_generation', scaler_y_wind)
+            plot_predictions(model, X_test_wind, y_test_wind, feature_engineered_data.index[-len(X_test_wind):], name, 'wind_generation', scaler_y_wind)
+            
+            if name in ['random_forest', 'gradient_boosting']:
+                plot_feature_importance(model, feature_names_wind, name, 'wind_generation')
+        
+        # Build and evaluate time series models for wind generation
+        build_arima_model(feature_engineered_data, 'wind_generation')
+        build_prophet_model(feature_engineered_data, 'wind_generation')
+        evaluate_time_series_models(feature_engineered_data, 'wind_generation')
+        plot_time_series_predictions(feature_engineered_data, 'wind_generation')
+        
+        # Step 6: Forecasting
+        print("\n--- Step 6: Forecasting ---\n")
+        
+        # Create a future weather data frame for forecasting (for demonstration, we'll use the last 24 hours of our data)
+        future_weather = weather_processed.iloc[-24:].copy()
+        
+        # Generate forecasts for solar generation
+        forecasts_solar = {}
+        for model_type in ['linear_regression', 'random_forest', 'gradient_boosting', 'arima', 'prophet']:
+            try:
+                forecast = forecast_renewable_energy(future_weather, 24, 'solar_generation', model_type)
+                forecasts_solar[model_type] = forecast
+                plot_forecast(forecast, 'solar_generation', model_type)
+            except Exception as e:
+                print(f"Error generating forecast with {model_type} for solar_generation: {e}")
+        
+        # Create ensemble forecast for solar generation
+        if forecasts_solar:
+            ensemble_solar = create_ensemble_forecast(forecasts_solar, 'solar_generation')
+            plot_ensemble_forecast(ensemble_solar, 'solar_generation')
+        
+        # Generate forecasts for wind generation
+        forecasts_wind = {}
+        for model_type in ['linear_regression', 'random_forest', 'gradient_boosting', 'arima', 'prophet']:
+            try:
+                forecast = forecast_renewable_energy(future_weather, 24, 'wind_generation', model_type)
+                forecasts_wind[model_type] = forecast
+                plot_forecast(forecast, 'wind_generation', model_type)
+            except Exception as e:
+                print(f"Error generating forecast with {model_type} for wind_generation: {e}")
+        
+        # Create ensemble forecast for wind generation
+        if forecasts_wind:
+            ensemble_wind = create_ensemble_forecast(forecasts_wind, 'wind_generation')
+            plot_ensemble_forecast(ensemble_wind, 'wind_generation')
+        
+        print("\n==========================================")
+        print("Project complete! Results saved in 'results/' directory.")
+        print("Visualizations saved in 'visualizations/' directory.")
+        print("==========================================")
     
-    # Save ensemble forecast
-    ensemble.to_csv(f'results/ensemble_{target_col}_forecast.csv')
-    print(f"Ensemble forecast saved to 'results/ensemble_{target_col}_forecast.csv'")
-    
-    return ensemble
-
-def plot_ensemble_forecast(ensemble, target_col, savefig=True):
-    """
-    Plot ensemble forecast.
-    
-    Args:
-        ensemble: DataFrame with ensemble forecast
-        target_col: Target column name
-        savefig: Whether to save the figure to file
-    """
-    print(f"Plotting ensemble forecast for {target_col}...")
-    
-    plt.figure(figsize=(12, 6))
-    
-    # Get list of models
-    models = [col.split('_')[0] for col in ensemble.columns if col.endswith('_forecast')]
-    
-    # Plot individual model forecasts
-    for model in models:
-        plt.plot(ensemble.index, ensemble[f'{model}_forecast'], alpha=0.3, label=f'{model}')
-    
-    # Plot ensemble forecast
-    plt.plot(ensemble.index, ensemble[f'{target_col}_ensemble'], color='black', linewidth=2, label='Ensemble')
-    
-    plt.title(f'Ensemble Forecast - {target_col}')
-    plt.xlabel('Timestamp')
-    plt.ylabel(target_col)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    if savefig:
-        plt.savefig(f'visualizations/ensemble_{target_col}_forecast.png', dpi=300, bbox_inches='tight')
-        print(f"Plot saved to 'visualizations/ensemble_{target_col}_forecast.png'")
-    
-    plt.close()
+    except Exception as e:
+        print(f"Error in main execution: {e}")
+        import traceback
+        traceback.print_exc()
