@@ -53,10 +53,6 @@ This project follows a structured workflow:
 3. **Machine Learning Modeling**: Comparing multiple models to improve accuracy.
 4. **Evaluation**: Using various metrics to assess model performance.
 
-
-
-Thank you for providing the model evaluation metrics. Let me incorporate these into my analysis:
-
 ## Comprehensive Model Performance Analysis
 
 ### Solar Generation Models (Quantitative Comparison)
